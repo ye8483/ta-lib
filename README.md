@@ -9,3 +9,4 @@ More info [https://ta-lib.org](https://ta-lib.org)
 
 # You want a new TA Function implemented?
 First step is to document the algorithm, with a sample of input/output in the [ta-lib-proposal-drafts]( https://github.com/TA-Lib/ta-lib-proposal-drafts ) repos.
+ 
