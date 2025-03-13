@@ -1,50 +1,55 @@
-name: Build 32-bit TA-Lib DLL
-on: [push]
+name: Build TA-Lib 32-bit DLL
+
+on:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
-    - name: Checkout code with submodules
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive  # 强制拉取子模块
-        fetch-depth: 0        # 完整拉取提交历史
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Install Dependencies
-      shell: cmd
-      run: |
-        @echo 安装编译工具链
-        choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
-        choco install visualstudio2022-buildtools -y
-        choco install visualstudio2022-workload-vctools -y
-        choco install nasm -y  # 关键依赖
+      - name: Install required tools
+        run: |
+          choco install -y msys2
+          refreshenv
+          C:\tools\msys64\usr\bin\pacman --noconfirm -Syuu
+          C:\tools\msys64\usr\bin\pacman --noconfirm -S base-devel mingw-w64-i686-toolchain
+        shell: powershell
 
-    - name: Build Process (Single Session)
-      shell: cmd
-      run: |
-        @echo █ 激活VS编译环境
-        call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x86
+      - name: Set up 32-bit MSYS2 environment
+        run: |
+          $env:PATH = "C:\tools\msys64\mingw32\bin;C:\tools\msys64\usr\bin;" + $env:PATH
+        shell: powershell
 
-        @echo █ 验证环境变量
-        set | findstr "VCToolsInstallDir" || exit /b 1
+      - name: Configure TA-Lib
+        run: |
+          cd src
+          ./configure --host=i686-w64-mingw32 --enable-shared
+        shell: msys2 {0}
 
-        @echo █ 清理并重建编译目录
-        rmdir /s/q build 2>nul
-        mkdir build
+      - name: Build TA-Lib
+        run: |
+          cd src
+          make
+        shell: msys2 {0}
 
-        @echo █ 生成CMake工程
-        cd build
-        cmake -G "Visual Studio 17 2022" -A Win32 -T "v143" -D BUILD_SHARED_LIBS=ON .. || exit /b 1
+      - name: Check build result
+        run: |
+          if (Test-Path src/.libs/*.dll) {
+            Write-Host "Build succeeded, DLL files found."
+          } else {
+            Write-Error "Build failed, no DLL files found."
+            exit 1
+          }
+        shell: powershell
 
-        @echo █ 编译核心目标
-        cmake --build . --config Release --target ta_lib -- /m:8 || exit /b 1
-
-        @echo █ 提取DLL文件
-        copy bin\Release\ta_lib.dll ..\ || exit /b 1
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ta_lib.dll
-        path: ta_lib.dll
+      - name: Upload DLL artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ta-lib-32bit-dll
+          path: src/.libs/*.dll
