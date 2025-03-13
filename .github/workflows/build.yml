@@ -9,16 +9,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-        fetch-depth: 0  # 禁用浅克隆
-        ref: main  # 使用TA-Lib官方主分支（根据实际仓库调整）
-
-    - name: Retry on Checkout Failure
-      if: failure()  # 若检出失败自动重试
-      uses: nick-fields/retry@v3
-      with:
-        max_attempts: 3
-        command: |
-          git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules origin +refs/heads/main*:refs/remotes/origin/main*
+        fetch-depth: 0
 
     - name: Patch CMakeLists.txt
       shell: cmd
@@ -43,7 +34,10 @@ jobs:
         mkdir build
         cd build
         cmake -G "Visual Studio 17 2022" -A Win32 -T "v143" ..
-        cmake --build . --config Release --target ta_lib
+
+        @echo █ 关键修复：显式指定解决方案文件 █
+        cmake --build . --config Release --target ta_lib --project TA-Lib.sln  # 添加--project参数
+
         copy bin\Release\ta_lib.dll ..\
 
     - name: Upload Artifact
