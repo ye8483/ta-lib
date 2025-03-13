@@ -11,33 +11,31 @@ jobs:
         submodules: recursive
 
     - name: Install Dependencies
+      shell: cmd  # 全程使用CMD保持环境一致性
       run: |
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
         choco install visualstudio2022-buildtools -y
         choco install visualstudio2022-workload-vctools -y
 
-    - name: Setup VS Environment
-      shell: cmd  # 强制使用CMD执行此步骤
+    - name: Build TA-Lib
+      shell: cmd  # 关键：单步完成环境激活+编译
       run: |
-        echo 调用VsDevCmd.bat设置环境变量
+        echo █ 激活VS编译环境
         call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x86
-        set
 
-    - name: Configure CMake
-      shell: cmd
-      run: |
+        echo █ 配置CMake工程
         mkdir build
         cd build
         cmake -G "Visual Studio 17 2022" -A Win32 ..
 
-    - name: Build TA-Lib
-      shell: cmd
-      run: |
-        cd build
+        echo █ 开始编译
         cmake --build . --config Release
+
+        echo █ 复制DLL到根目录
+        copy bin\Release\ta_lib.dll ..\
 
     - name: Upload DLL
       uses: actions/upload-artifact@v4
       with:
         name: ta_lib.dll
-        path: build/bin/Release/ta_lib.dll
+        path: ta_lib.dll  # 直接上传根目录下的DLL
