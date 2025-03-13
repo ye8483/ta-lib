@@ -1,40 +1,18 @@
 name: Build 32-bit TA-Lib DLL
-on: 
-  push:
-    branches: [ main ]
-  workflow_dispatch:  # 允许手动触发
+on: [push]
 
 jobs:
   build:
     runs-on: windows-latest
-    env:
-      CHOCO_CACHE_DIR: C:\ProgramData\chocolatey\bin   # Chocolatey默认安装路径
-      VS_TOOLS_DIR: C:\Program Files\Microsoft Visual Studio\2022\BuildTools
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        submodules: recursive  # 关键：拉取TA-Lib子模块
-        fetch-depth: 0         # 完整克隆历史记录（避免部分克隆导致缓存失效）
+        submodules: recursive
+        fetch-depth: 0
 
-    - name: Cache Chocolatey Packages
-      uses: actions/cache@v3
-      id: choco-cache
-      with:
-        path: ${{ env.CHOCO_CACHE_DIR }}
-        key: ${{ runner.os }}-choco-${{ hashFiles('**/CMakeLists.txt') }}
-
-    - name: Cache Visual Studio Tools
-      uses: actions/cache@v3
-      id: vs-cache
-      with:
-        path: ${{ env.VS_TOOLS_DIR }}
-        key: ${{ runner.os }}-vs2022-${{ hashFiles('**/CMakeLists.txt') }}
-
-    - name: Install Dependencies (Conditional)
+    - name: Install Dependencies
       shell: cmd
-      if: steps.choco-cache.outputs.cache-hit != 'true'  # 仅缓存未命中时安装
       run: |
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
         choco install visualstudio2022-buildtools -y
@@ -44,7 +22,35 @@ jobs:
     - name: Build Process
       shell: cmd
       run: |
-        call "%VS_TOOLS_DIR%\Common7\Tools\VsDevCmd.bat" -arch=x86
-        cmake -B build -G "Visual Studio 17 2022" -A Win32 -T "v143"
-        cmake --build build --config Release --target ta_lib -- /m:8
-        copy build\bin\Release\ta_lib.dll .
+        @echo █ 动态定位VS编译环境 █
+        for /f "usebackq tokens=*" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Workload.VCTools -property installationPath`) do (
+          set "VS_PATH=%%i"
+        )
+        if not defined VS_PATH (
+          echo ❌ 未找到Visual Studio安装路径
+          exit /b 1
+        )
+
+        @echo █ 激活编译环境 (路径: %VS_PATH%) █
+        call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -arch=x86
+        set | findstr "VCToolsInstallDir" || exit /b 1
+
+        @echo █ 清理并重建编译目录 █
+        rmdir /s/q build 2>nul
+        mkdir build
+
+        @echo █ 配置CMake工程 █
+        cd build
+        cmake -G "Visual Studio 17 2022" -A Win32 -T "v143" -D BUILD_SHARED_LIBS=ON ..
+
+        @echo █ 编译核心目标 █
+        cmake --build . --config Release --target ta_lib -- /m:8 || exit /b 1
+
+        @echo █ 提取DLL文件 █
+        copy bin\Release\ta_lib.dll ..\
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ta_lib.dll
+        path: ta_lib.dll
