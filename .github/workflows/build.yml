@@ -1,55 +1,50 @@
-name: Build TA-Lib 32-bit DLL
-
-on:
+name: Build 32-bit TA-Lib DLL
+on: 
   push:
-    branches:
-      - main
+    branches: [ main ]
+  workflow_dispatch:  # 允许手动触发
 
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      CHOCO_CACHE_DIR: C:\ProgramData\chocolatey\bin   # Chocolatey默认安装路径
+      VS_TOOLS_DIR: C:\Program Files\Microsoft Visual Studio\2022\BuildTools
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive  # 关键：拉取TA-Lib子模块
+        fetch-depth: 0         # 完整克隆历史记录（避免部分克隆导致缓存失效）
 
-      - name: Install required tools
-        run: |
-          choco install -y msys2
-          refreshenv
-          C:\tools\msys64\usr\bin\pacman --noconfirm -Syuu
-          C:\tools\msys64\usr\bin\pacman --noconfirm -S base-devel mingw-w64-i686-toolchain
-        shell: powershell
+    - name: Cache Chocolatey Packages
+      uses: actions/cache@v3
+      id: choco-cache
+      with:
+        path: ${{ env.CHOCO_CACHE_DIR }}
+        key: ${{ runner.os }}-choco-${{ hashFiles('**/CMakeLists.txt') }}
 
-      - name: Set up 32-bit MSYS2 environment
-        run: |
-          $env:PATH = "C:\tools\msys64\mingw32\bin;C:\tools\msys64\usr\bin;" + $env:PATH
-        shell: powershell
+    - name: Cache Visual Studio Tools
+      uses: actions/cache@v3
+      id: vs-cache
+      with:
+        path: ${{ env.VS_TOOLS_DIR }}
+        key: ${{ runner.os }}-vs2022-${{ hashFiles('**/CMakeLists.txt') }}
 
-      - name: Configure TA-Lib
-        run: |
-          cd src
-          ./configure --host=i686-w64-mingw32 --enable-shared
-        shell: msys2 {0}
+    - name: Install Dependencies (Conditional)
+      shell: cmd
+      if: steps.choco-cache.outputs.cache-hit != 'true'  # 仅缓存未命中时安装
+      run: |
+        choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
+        choco install visualstudio2022-buildtools -y
+        choco install visualstudio2022-workload-vctools -y
+        choco install nasm -y
 
-      - name: Build TA-Lib
-        run: |
-          cd src
-          make
-        shell: msys2 {0}
-
-      - name: Check build result
-        run: |
-          if (Test-Path src/.libs/*.dll) {
-            Write-Host "Build succeeded, DLL files found."
-          } else {
-            Write-Error "Build failed, no DLL files found."
-            exit 1
-          }
-        shell: powershell
-
-      - name: Upload DLL artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: ta-lib-32bit-dll
-          path: src/.libs/*.dll
+    - name: Build Process
+      shell: cmd
+      run: |
+        call "%VS_TOOLS_DIR%\Common7\Tools\VsDevCmd.bat" -arch=x86
+        cmake -B build -G "Visual Studio 17 2022" -A Win32 -T "v143"
+        cmake --build build --config Release --target ta_lib -- /m:8
+        copy build\bin\Release\ta_lib.dll .
