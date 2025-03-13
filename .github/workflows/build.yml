@@ -1,22 +1,37 @@
 name: Build 32-bit TA-Lib DLL
-on: [push]  # 代码推送时触发
+on: [push]
 
 jobs:
   build:
-    runs-on: windows-latest  # 使用Windows环境
+    runs-on: windows-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4  # 更新为最新版本
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive  # 关键：确保拉取TA-Lib子模块
 
-    - name: Build TA-Lib
+    - name: Install Dependencies
+      run: |
+        # 安装编译工具链
+        choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
+        choco install visualstudio2022buildtools -y
+        choco install visualstudio2022-workload-vctools -y
+
+    - name: Configure CMake
       run: |
         mkdir build
         cd build
-        cmake -G "Visual Studio 16 2019" -A Win32 ..
-        cmake --build . --config Release
+        cmake -G "Visual Studio 17 2022" -A Win32 ..  # 更新生成器版本
+      shell: cmd
+
+    - name: Build TA-Lib
+      run: |
+        cd build
+        cmake --build . --config Release --verbose  # 启用详细日志
+      shell: cmd
 
     - name: Upload DLL
-      uses: actions/upload-artifact@v4  # 使用v4版本
+      uses: actions/upload-artifact@v4
       with:
         name: ta_lib.dll
         path: build/bin/Release/ta_lib.dll
