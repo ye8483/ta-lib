@@ -5,37 +5,38 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-    - name: Checkout code
+    - name: Checkout code with submodules
       uses: actions/checkout@v4
       with:
-        submodules: recursive
+        submodules: recursive  # 强制拉取子模块，避免依赖缺失:cite[4]
 
     - name: Install Dependencies
-      shell: cmd  # 全程使用CMD保持环境一致性
+      shell: cmd
       run: |
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
         choco install visualstudio2022-buildtools -y
-        choco install visualstudio2022-workload-vctools -y
+        choco install visualstudio2022-workload-vctools -y  # 确保安装完整C++工具链:cite[1]
 
-    - name: Build TA-Lib
-      shell: cmd  # 关键：单步完成环境激活+编译
+    - name: Build TA-Lib (Single Shell Session)
+      shell: cmd  # 统一使用CMD，避免环境变量跨步骤失效:cite[1]:cite[4]
       run: |
-        echo █ 激活VS编译环境
+        echo === Step 1: 激活VS编译环境 ===
         call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x86
+        set | findstr "VCToolsInstallDir"  # 验证环境变量
 
-        echo █ 配置CMake工程
+        echo === Step 2: 配置CMake工程 ===
         mkdir build
         cd build
-        cmake -G "Visual Studio 17 2022" -A Win32 ..
+        cmake -G "Visual Studio 17 2022" -A Win32 -T "v143" ..  # 强制指定工具集版本:cite[4]
 
-        echo █ 开始编译
-        cmake --build . --config Release
+        echo === Step 3: 编译核心目标 ===
+        cmake --build . --config Release --target ta_lib  # 仅编译必要目标，避免冗余构建
 
-        echo █ 复制DLL到根目录
+        echo === Step 4: 复制DLL至根目录 ===
         copy bin\Release\ta_lib.dll ..\
 
-    - name: Upload DLL
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ta_lib.dll
-        path: ta_lib.dll  # 直接上传根目录下的DLL
+        path: ta_lib.dll
