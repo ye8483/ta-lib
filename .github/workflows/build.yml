@@ -16,24 +16,25 @@ jobs:
         choco install visualstudio2022-buildtools -y
         choco install visualstudio2022-workload-vctools -y
 
-    - name: Setup VS Environment  # 新增：激活VS编译环境
+    - name: Setup VS Environment
+      shell: cmd  # 强制使用CMD执行此步骤
       run: |
-        echo "调用VsDevCmd.bat设置环境变量"
+        echo 调用VsDevCmd.bat设置环境变量
         call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x86
         set
 
     - name: Configure CMake
+      shell: cmd
       run: |
         mkdir build
         cd build
         cmake -G "Visual Studio 17 2022" -A Win32 ..
-      shell: cmd
 
     - name: Build TA-Lib
+      shell: cmd
       run: |
         cd build
         cmake --build . --config Release
-      shell: cmd
 
     - name: Upload DLL
       uses: actions/upload-artifact@v4
