@@ -8,26 +8,31 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        submodules: recursive  # 关键：确保拉取TA-Lib子模块
+        submodules: recursive
 
     - name: Install Dependencies
       run: |
-        # 安装编译工具链
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
-        choco install visualstudio2022buildtools -y
+        choco install visualstudio2022-buildtools -y
         choco install visualstudio2022-workload-vctools -y
+
+    - name: Setup VS Environment  # 新增：激活VS编译环境
+      run: |
+        echo "调用VsDevCmd.bat设置环境变量"
+        call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x86
+        set
 
     - name: Configure CMake
       run: |
         mkdir build
         cd build
-        cmake -G "Visual Studio 17 2022" -A Win32 ..  # 更新生成器版本
+        cmake -G "Visual Studio 17 2022" -A Win32 ..
       shell: cmd
 
     - name: Build TA-Lib
       run: |
         cd build
-        cmake --build . --config Release --verbose  # 启用详细日志
+        cmake --build . --config Release
       shell: cmd
 
     - name: Upload DLL
