@@ -5,19 +5,17 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-    - name: Checkout code
+    - name: Checkout original code
       uses: actions/checkout@v4
       with:
-        submodules: recursive
-        fetch-depth: 0
-        # 关键修复：切换到修复后的代码分支
-        ref: fix-cmake-status-command  # 替换为实际存在的分支名
+        submodules: recursive  # 必须拉取TA-Lib子模块
+        ref: master  # 明确指定使用主分支
 
     - name: Patch CMakeLists.txt
       shell: cmd
       run: |
         @echo █ 自动修复CMakeLists.txt █
-        sed -i "s/status(/message(STATUS /g" CMakeLists.txt  # 修复拼写错误
+        powershell -Command "(Get-Content CMakeLists.txt) -replace 'status\(', 'message(STATUS ' | Set-Content CMakeLists.txt"
 
     - name: Install Dependencies
       shell: cmd
