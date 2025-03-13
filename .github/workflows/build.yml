@@ -1,23 +1,41 @@
 name: Build 32-bit TA-Lib DLL
-on: [push]
+on: 
+  push:
+    paths:  # 仅当关键文件变更时触发
+      - '**.cpp'
+      - 'CMakeLists.txt'
+      - '.github/workflows/build.yml'
 
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      CHOCO_CACHE_DIR: C:\ProgramData\chocolatey\lib  # Chocolatey包存储路径
+      VS_CACHE_DIR: C:\Program Files (x86)\Microsoft Visual Studio  # VS安装路径
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         submodules: recursive
-        fetch-depth: 0
 
-    - name: Patch CMakeLists.txt
-      shell: cmd
-      run: |
-        powershell -Command "(Get-Content CMakeLists.txt) -replace 'status\(', 'message(STATUS ' | Set-Content CMakeLists.txt"
+    - name: Cache Chocolatey Packages  # 缓存Choco依赖
+      uses: actions/cache@v3
+      id: cache-choco
+      with:
+        path: ${{ env.CHOCO_CACHE_DIR }}
+        key: ${{ runner.os }}-choco-${{ hashFiles('**/CMakeLists.txt') }}
+
+    - name: Cache Visual Studio Tools  # 缓存VS工具链
+      uses: actions/cache@v3
+      id: cache-vs
+      with:
+        path: ${{ env.VS_CACHE_DIR }}
+        key: ${{ runner.os }}-vs2022-${{ hashFiles('**/CMakeLists.txt') }}
 
     - name: Install Dependencies
       shell: cmd
+      if: steps.cache-choco.outputs.cache-hit != 'true'  # 仅缓存未命中时安装
       run: |
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
         choco install visualstudio2022-buildtools -y
@@ -34,10 +52,7 @@ jobs:
         mkdir build
         cd build
         cmake -G "Visual Studio 17 2022" -A Win32 -T "v143" ..
-
-        @echo █ 关键修复：显式指定解决方案文件 █
-        cmake --build . --config Release --target ta_lib --project TA-Lib.sln  # 添加--project参数
-
+        cmake --build . --config Release --target ta_lib_shared
         copy bin\Release\ta_lib.dll ..\
 
     - name: Upload Artifact
