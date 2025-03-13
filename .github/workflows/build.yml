@@ -35,13 +35,16 @@ jobs:
         call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -arch=x86
         set | findstr "VCToolsInstallDir" || exit /b 1
 
+        @echo █ 强制设置平台环境变量 █
+        set Platform=x86  # 关键修复：显式定义Platform变量
+
         @echo █ 清理并重建编译目录 █
         rmdir /s/q build 2>nul
         mkdir build
 
         @echo █ 配置CMake工程 █
         cd build
-        cmake -G "Visual Studio 17 2022" -A Win32 -T "v143" -D BUILD_SHARED_LIBS=ON ..
+        cmake -G "Visual Studio 17 2022" -A Win32 -T "v143" -D BUILD_SHARED_LIBS=ON .. || exit /b 1
 
         @echo █ 编译核心目标 █
         cmake --build . --config Release --target ta_lib -- /m:8 || exit /b 1
