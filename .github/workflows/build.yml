@@ -1,0 +1,21 @@
+name: Build 32-bit TA-Lib DLL
+on: [push]  # 触发条件：任何代码推送
+jobs:
+  build:
+    runs-on: windows-latest  # 使用Windows编译环境
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2  # 拉取仓库代码
+
+    - name: Build TA-Lib
+      run: |  # 执行编译命令
+        mkdir build
+        cd build
+        cmake -G "Visual Studio 16 2019" -A Win32 ..
+        cmake --build . --config Release
+
+    - name: Upload DLL
+      uses: actions/upload-artifact@v2  # 上传生成的DLL
+      with:
+        name: ta_lib.dll
+        path: build/bin/Release/ta_lib.dll
