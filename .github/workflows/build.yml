@@ -8,32 +8,40 @@ jobs:
     - name: Checkout code with submodules
       uses: actions/checkout@v4
       with:
-        submodules: recursive  # 强制拉取子模块，避免依赖缺失:cite[4]
+        submodules: recursive  # 强制拉取子模块
+        fetch-depth: 0        # 完整拉取提交历史
 
     - name: Install Dependencies
       shell: cmd
       run: |
+        @echo 安装编译工具链
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
         choco install visualstudio2022-buildtools -y
-        choco install visualstudio2022-workload-vctools -y  # 确保安装完整C++工具链:cite[1]
+        choco install visualstudio2022-workload-vctools -y
+        choco install nasm -y  # 关键依赖
 
-    - name: Build TA-Lib (Single Shell Session)
-      shell: cmd  # 统一使用CMD，避免环境变量跨步骤失效:cite[1]:cite[4]
+    - name: Build Process (Single Session)
+      shell: cmd
       run: |
-        echo === Step 1: 激活VS编译环境 ===
+        @echo █ 激活VS编译环境
         call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x86
-        set | findstr "VCToolsInstallDir"  # 验证环境变量
 
-        echo === Step 2: 配置CMake工程 ===
+        @echo █ 验证环境变量
+        set | findstr "VCToolsInstallDir" || exit /b 1
+
+        @echo █ 清理并重建编译目录
+        rmdir /s/q build 2>nul
         mkdir build
+
+        @echo █ 生成CMake工程
         cd build
-        cmake -G "Visual Studio 17 2022" -A Win32 -T "v143" ..  # 强制指定工具集版本:cite[4]
+        cmake -G "Visual Studio 17 2022" -A Win32 -T "v143" -D BUILD_SHARED_LIBS=ON .. || exit /b 1
 
-        echo === Step 3: 编译核心目标 ===
-        cmake --build . --config Release --target ta_lib  # 仅编译必要目标，避免冗余构建
+        @echo █ 编译核心目标
+        cmake --build . --config Release --target ta_lib -- /m:8 || exit /b 1
 
-        echo === Step 4: 复制DLL至根目录 ===
-        copy bin\Release\ta_lib.dll ..\
+        @echo █ 提取DLL文件
+        copy bin\Release\ta_lib.dll ..\ || exit /b 1
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
