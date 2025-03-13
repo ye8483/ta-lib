@@ -5,16 +5,24 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-    - name: Checkout original code
+    - name: Checkout code
       uses: actions/checkout@v4
       with:
-        submodules: recursive  # 必须拉取TA-Lib子模块
-        ref: master  # 明确指定使用主分支
+        submodules: recursive
+        fetch-depth: 0  # 禁用浅克隆
+        ref: main  # 使用TA-Lib官方主分支（根据实际仓库调整）
+
+    - name: Retry on Checkout Failure
+      if: failure()  # 若检出失败自动重试
+      uses: nick-fields/retry@v3
+      with:
+        max_attempts: 3
+        command: |
+          git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules origin +refs/heads/main*:refs/remotes/origin/main*
 
     - name: Patch CMakeLists.txt
       shell: cmd
       run: |
-        @echo █ 自动修复CMakeLists.txt █
         powershell -Command "(Get-Content CMakeLists.txt) -replace 'status\(', 'message(STATUS ' | Set-Content CMakeLists.txt"
 
     - name: Install Dependencies
@@ -28,14 +36,10 @@ jobs:
     - name: Build Process
       shell: cmd
       run: |
-        @echo █ 动态定位VS编译环境 █
-        for /f "usebackq tokens=*" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Workload.VCTools -property installationPath`) do (
-          set "VS_PATH=%%i"
-        )
+        for /f "usebackq tokens=*" %%i in (`vswhere -latest -products * -requires Microsoft.VisualStudio.Workload.VCTools -property installationPath`) do set "VS_PATH=%%i"
         call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -arch=x86
         set Platform=x86
 
-        @echo █ 编译流程 █
         mkdir build
         cd build
         cmake -G "Visual Studio 17 2022" -A Win32 -T "v143" ..
