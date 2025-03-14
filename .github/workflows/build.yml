@@ -10,8 +10,8 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      CHOCO_LIB_DIR: C:\ProgramData\chocolatey\lib          # Chocolatey包安装目录
-      VS_INSTALL_DIR: C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools  # VS工具链目录
+      CHOCO_LIB_DIR: C:\ProgramData\chocolatey\lib
+      VS_INSTALL_DIR: C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools
 
     steps:
     - name: Checkout code
@@ -20,27 +20,27 @@ jobs:
         submodules: recursive
         fetch-depth: 0
 
-    # 缓存Chocolatey安装包
+    # 缓存Chocolatey和VS编译工具
     - name: Cache Chocolatey
       uses: actions/cache@v3
       id: cache-choco
       with:
         path: ${{ env.CHOCO_LIB_DIR }}
-        key: ${{ runner.os }}-choco-${{ hashFiles('**/CMakeLists.txt') }}-v1
+        key: ${{ runner.os }}-choco-${{ hashFiles('**/CMakeLists.txt') }}-v2
 
-    # 缓存Visual Studio编译工具
     - name: Cache Visual Studio
       uses: actions/cache@v3
       id: cache-vs
       with:
         path: ${{ env.VS_INSTALL_DIR }}
-        key: ${{ runner.os }}-vs2022-${{ hashFiles('**/CMakeLists.txt') }}-v1
+        key: ${{ runner.os }}-vs2022-${{ hashFiles('**/CMakeLists.txt') }}-v2
 
-    # 仅当缓存未命中时安装依赖
+    # 条件化安装步骤
     - name: Install Dependencies
-      shell: cmd
+      shell: powershell
       if: steps.cache-choco.outputs.cache-hit != 'true' || steps.cache-vs.outputs.cache-hit != 'true'
       run: |
+        Set-ExecutionPolicy Bypass -Scope Process -Force
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
         choco install visualstudio2022-buildtools -y
         choco install visualstudio2022-workload-vctools -y
@@ -54,27 +54,29 @@ jobs:
     - name: Build Process
       shell: cmd
       run: |
-        echo █ 动态定位VS编译环境 █
+        @echo █ 动态定位VS编译环境 █
         for /f "usebackq tokens=*" %%i in (`vswhere -latest -products * -requires Microsoft.VisualStudio.Workload.VCTools -property installationPath`) do set "VS_PATH=%%i"
         call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -arch=x86
         set Platform=x86
 
-        echo █ 清理并重建编译目录 █
+        @echo █ 清理并重建编译目录 █
         rmdir /s/q build 2>nul
         mkdir build
         cd build
 
-        echo █ 配置CMake工程 █
+        @echo █ 配置CMake工程 █
         cmake -G "Visual Studio 17 2022" -A Win32 -T "v143" ..
 
-        echo █ 编译目标 █
+        @echo █ 编译目标 █
         cmake --build . --config Release --target ta-lib
 
-        echo █ 验证生成路径 █
-        dir Release\ta-lib.dll /s  # 检查实际生成路径
-
-        echo █ 关键修复：修正复制路径 █
-        copy Release\ta-lib.dll ..\ta_lib.dll  # 从build/Release复制并重命名
+        @echo █ 路径验证与转义修复 █
+        if exist "Release\ta-lib.dll" (
+          @echo 检测到DLL文件，执行复制...
+          copy "Release\ta-lib.dll" "..\ta_lib.dll"
+        ) else (
+          @echo 错误：DLL文件未生成！ && exit /b 1
+        )
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
