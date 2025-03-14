@@ -1,41 +1,23 @@
 name: Build 32-bit TA-Lib DLL
-on: 
-  push:
-    paths:  # 仅当关键文件变更时触发
-      - '**.cpp'
-      - 'CMakeLists.txt'
-      - '.github/workflows/build.yml'
+on: [push]
 
 jobs:
   build:
     runs-on: windows-latest
-    env:
-      CHOCO_CACHE_DIR: C:\ProgramData\chocolatey\lib  # Chocolatey包存储路径
-      VS_CACHE_DIR: C:\Program Files (x86)\Microsoft Visual Studio  # VS安装路径
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         submodules: recursive
+        fetch-depth: 0
 
-    - name: Cache Chocolatey Packages  # 缓存Choco依赖
-      uses: actions/cache@v3
-      id: cache-choco
-      with:
-        path: ${{ env.CHOCO_CACHE_DIR }}
-        key: ${{ runner.os }}-choco-${{ hashFiles('**/CMakeLists.txt') }}
-
-    - name: Cache Visual Studio Tools  # 缓存VS工具链
-      uses: actions/cache@v3
-      id: cache-vs
-      with:
-        path: ${{ env.VS_CACHE_DIR }}
-        key: ${{ runner.os }}-vs2022-${{ hashFiles('**/CMakeLists.txt') }}
+    - name: Patch CMakeLists.txt
+      shell: cmd
+      run: |
+        powershell -Command "(Get-Content CMakeLists.txt) -replace 'status\(', 'message(STATUS ' | Set-Content CMakeLists.txt"
 
     - name: Install Dependencies
       shell: cmd
-      if: steps.cache-choco.outputs.cache-hit != 'true'  # 仅缓存未命中时安装
       run: |
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
         choco install visualstudio2022-buildtools -y
@@ -45,14 +27,21 @@ jobs:
     - name: Build Process
       shell: cmd
       run: |
+        @echo █ 动态定位VS编译环境 █
         for /f "usebackq tokens=*" %%i in (`vswhere -latest -products * -requires Microsoft.VisualStudio.Workload.VCTools -property installationPath`) do set "VS_PATH=%%i"
         call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -arch=x86
         set Platform=x86
 
+        @echo █ 关键修复：使用正确目标名称 ta-lib █
         mkdir build
         cd build
         cmake -G "Visual Studio 17 2022" -A Win32 -T "v143" ..
-        cmake --build . --config Release --target ta_lib_shared
+        cmake --build . --config Release --target ta-lib  # 目标名称修正
+
+        @echo █ 验证DLL路径 █
+        dir bin\Release\*.dll /s  # 列出所有生成的DLL
+
+        @echo █ 提取DLL文件 █
         copy bin\Release\ta_lib.dll ..\
 
     - name: Upload Artifact
